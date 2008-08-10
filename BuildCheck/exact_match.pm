@@ -1,4 +1,4 @@
-# $Id: exact_match.pm,v 1.26 2007/09/18 21:50:39 pfeiffer Exp $
+# $Id: exact_match.pm,v 1.28 2008/07/30 23:17:01 pfeiffer Exp $
 use strict;
 package BuildCheck::exact_match;
 
@@ -195,7 +195,8 @@ sub build_check {
 # If we get here, we have to scan through all of the dependencies
 # to see if any of them has changed.
 #
-  my @old_dep_list = map exists $build_cwd->{DIRCONTENTS} && $build_cwd->{DIRCONTENTS}{$_} || file_info( $_, $build_cwd ),
+  my @old_dep_list = map
+    exists $build_cwd->{DIRCONTENTS} && $build_cwd->{DIRCONTENTS}{$_} || FileInfo::path_file_info( $_, $build_cwd ),
     split /\01/, $sorted_deps;
 
   if (@old_dep_list != @$sorted_dependencies) { # Different # of dependencies?
@@ -341,7 +342,7 @@ sub build_cache_key {
   $key .= "\01" . FileInfo::relative_filename $tinfo->{'..'}, $build_cwd
     if $tinfo->{'..'} != $build_cwd;
 
-  if( $FileInfo::case_sensitive_filenames ) {
+  if( FileInfo::case_sensitive_filenames ) {
     $key = Digest::MD5::md5_base64( $key );
     $key =~ tr|/|%|;		# Make it file system compatible.
   } else {

@@ -1,4 +1,4 @@
-# $Id: BuildCache.pm,v 1.39 2008/05/10 09:17:21 pfeiffer Exp $
+# $Id: BuildCache.pm,v 1.41 2008/08/09 09:24:52 pfeiffer Exp $
 #
 # Key things to do before this is production-ready:
 #
@@ -102,7 +102,7 @@ use FileInfo;
 use FileInfo_makepp;
 use Makecmds;
 use Sys::Hostname;
-use POSIX ':errno_h';
+use POSIX qw(:errno_h S_ISREG);
 
 BEGIN {
   eval { $_ = ESTALE };		# Not defined on Win ActiveState.
@@ -198,7 +198,7 @@ sub cache_file {
   my $input_filename = FileInfo::absolute_filename_nolink( $input_finfo );
   my $orig_prot = (FileInfo::lstat_array( $input_finfo ))->[FileInfo::STAT_MODE];
   return 1			# Succeed without doing anything
-    if ($orig_prot & FileInfo::S_IFMT) != FileInfo::S_IFREG; # if not a regular file?
+    unless S_ISREG $orig_prot;	# if not a regular file?
 
   # TBD: Perhaps we ought to succeed without doing anything if the entry
   # is already in the cache.  This reduces the likelihood of thrashing, but
@@ -264,16 +264,16 @@ sub cache_file {
 # copy the file.  If it is on the same file system, then make a hard link,
 # since that is faster and uses almost no disk space.
 #
-
-  my( $dev, $size, $mtime ) =
-    @{FileInfo::lstat_array $input_finfo}[FileInfo::STAT_DEV, FileInfo::STAT_SIZE, FileInfo::STAT_MTIME];
+  my $dev = (FileInfo::stat_array $input_finfo->{'..'})->[FileInfo::STAT_DEV];
+  my( $size, $mtime ) =
+    @{FileInfo::lstat_array $input_finfo}[FileInfo::STAT_SIZE, FileInfo::STAT_MTIME];
   # If it's on the same filesystem, then link; otherwise, copy.
   my $target_src;
   my @files_to_unlink;
   my $result = eval {
     my $linking;
     my $target_prot = $file_prot;
-    if ($dev == $self->{DEV} && !$::force_bc_copy) {
+    if( $dev == $self->{DEV} && !$::force_bc_copy ) {
       $linking = 1;
       $target_src = $input_filename;
       $target_prot &= ~0222;	# Make it read only, so that no one can
@@ -635,7 +635,7 @@ sub copy_from_cache {
     my ($size, $mtime);
     # TBD: Maybe we shouldn't fall back to copying if link fails.  There
     # should be a warning at least.
-    if( $self->{DEV} == ((FileInfo::stat_array( $output_finfo->{'..'} ))->[FileInfo::STAT_DEV] || 0)
+    if( $self->{DEV} == ((FileInfo::stat_array $output_finfo->{'..'})->[FileInfo::STAT_DEV] || 0)
 	&& !$::force_bc_copy &&
 				  # Same file system?
 	link($self->{FILENAME}, $output_fname)) {

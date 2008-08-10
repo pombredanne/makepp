@@ -2,7 +2,7 @@
 
 makepp_release_notes -- Major changes in each version of makepp
 
-=for vc $Id: makepp_release_notes.pod,v 1.51 2008/05/17 14:54:51 pfeiffer Exp $
+=for vc $Id: makepp_release_notes.pod,v 1.55 2008/08/09 09:34:01 pfeiffer Exp $
 
 =head1 DESCRIPTION
 
@@ -12,13 +12,31 @@ makepp_release_notes -- Major changes in each version of makepp
 
 =item *
 
-New variable $/ for portable directory separator.  Lots of Windows fixes,
-including C<-j> (parallel builds) for Cygwin and MinGW and smart recursive
-builds on Cygwin.
+Ported to IBM z/OS Unix System Services.  Only smart recursive make doesn't work.
 
 =item *
 
 Makepp has become noticeably faster.
+
+=item *
+
+Abolish the undocumented fancy renaming of only '.' to '_dot_' in variable and function names.
+
+=item *
+
+Makepp will now also look for options in files called F<.makepprc>.  The
+option C<-A> or C<--args-file> is now consistently available on all commands.
+
+=item *
+
+The environment variable MAKEPP_CASE_SENSITIVE_FILENAMES supercedes the
+options --case-sensitive-filenames and --no-case-sensitive-filenames.
+
+=item *
+
+New variable $/ for portable directory separator.  Lots of Windows fixes,
+including C<-j> (parallel builds) for Cygwin and MinGW and smart recursive
+builds on Cygwin.
 
 =item *
 

@@ -1,8 +1,9 @@
 package FileInfo;
 require Exporter;
 use Cwd;
+use POSIX qw(S_ISDIR);
 
-# $Id: FileInfo.pm,v 1.78 2008/05/17 14:08:35 pfeiffer Exp $
+# $Id: FileInfo.pm,v 1.82 2008/08/09 09:24:51 pfeiffer Exp $
 
 #use English;
 # Don't ever include this!  This turns out to slow down
@@ -131,31 +132,19 @@ overrides some of the routines here.
 # makepp's memory footprint by 1.5% and execution time by 4% compared to the
 # 13-element array.
 #
-# Definitions for use with the stat function:
-#
-# usage:
-#	@stat = (stat ...)[STAT_VECTOR];
-#	$stat[STAT_MTIME]
-sub STAT_VECTOR() { 0, 2, 3, 4, 5, 7, 9 }
+# These consts correspont to real stat indexes 2, 3, 4, 7, 9, 0 as use in lstat_array!
 BEGIN {
-  *STAT_DEV = \&TextSubs::CONST0;
-  *STAT_MODE = \&TextSubs::CONST1;
-  *STAT_NLINK = \&TextSubs::CONST2;
-  *STAT_UID = \&TextSubs::CONST3;
-  *STAT_GID = \&TextSubs::CONST4;
-  *STAT_SIZE = \&TextSubs::CONST5;
-  *STAT_MTIME = \&TextSubs::CONST6;
+  *STAT_MODE =  \&TextSubs::CONST0;
+  *STAT_NLINK = \&TextSubs::CONST1;
+  *STAT_UID =   \&TextSubs::CONST2;
+  *STAT_SIZE =  \&TextSubs::CONST3;
+  *STAT_MTIME = \&TextSubs::CONST4;
+  *STAT_DEV =   \&TextSubs::CONST5; # Added by lstat only for dirs.
 }
 
-sub S_IFMT()  { 0170000 }	# Bits in stat modes field for file type
-sub S_IFREG() { 0100000 }	# Bit in stat modes field that indicates this
-				# is a regular file.
-sub S_IFDIR() { 040000 }	# This is a directory.
-sub S_IWUSR() { 0200 }		# Owner has write permission
+=head2 case_sensitive_filenames
 
-=head2 $case_sensitive_filenames
-
-Sets true if we think makepp should treat filenames as case sensitive.
+True if we think makepp should treat filenames as case sensitive.
 
 At present, makepp can be either 100% case insensitive, converting all
 filenames to lower case, or 100% case sensitive.  Makepp currently cannot
@@ -172,23 +161,32 @@ That is ActiveState at least until 5.10.0 and possibly older Cygwin versions.
 
 =cut
 
-our $case_sensitive_filenames;
 our $stat_exe_separate;
 BEGIN {
+  my $done;
+  if( exists $ENV{MAKEPP_CASE_SENSITIVE_FILENAMES} ) {
+    *case_sensitive_filenames = $ENV{MAKEPP_CASE_SENSITIVE_FILENAMES} ? \&TextSubs::CONST1 : \&TextSubs::CONST0;
+    return if !::is_windows;
+    $done = 1;
+  }
   my $test_fname = '.makepp_test';
   substr $test_fname, 12, -1, substr rand, 1 while
     -e $test_fname || -e uc $test_fname or
     ::is_windows and -e "$test_fname.exe" || -e uc "$test_fname.exe";
   $test_fname .= '.exe' if ::is_windows;
-  {
-    open my $fh, '>', $test_fname or # Create the file.
-      return $case_sensitive_filenames = $stat_exe_separate = ::is_windows;
+  unless( open my $fh, '>', $test_fname ) { # Create the file.
+    $stat_exe_separate = ::is_windows > 0;
+    *case_sensitive_filenames = ::is_windows ? \&TextSubs::CONST0 : \&TextSubs::CONST1
+      unless $done;
+    return;
 				# If that doesn't work for some reason, assume
 				# we are case insensitive if windows, and case
 				# sensitive for unix.
   }
 
-  $case_sensitive_filenames = !-e uc $test_fname; # Look for it with different case.
+  *case_sensitive_filenames = -e uc $test_fname ? \&TextSubs::CONST0 : \&TextSubs::CONST1
+    unless $done;
+				# Look for it with different case.
   $stat_exe_separate = !-e substr $test_fname, 0, -4 if ::is_windows;
   unlink $test_fname;
 }
@@ -199,6 +197,7 @@ BEGIN {
 our( $read_dir_before_lstat, $root, $CWD_INFO );
 my $epoch = 2; # Counter that determines whether dir listings are up-to-date.
 our $empty_array = [];		# Only have one, instead of a new one each time
+my @ids_for_check;
 
 #
 # All of the information is stored in the structure below.  $root is an
@@ -381,7 +380,7 @@ sub dereference {
 #    return $finfo if exists $finfo->{ALTERNATE_VERSIONS};
 				# Treat a repository link as not a link.
     $finfo = $finfo->{LINK_DEREF} ||= # Have we already dereferenced it?
-      file_info( readlink absolute_filename_nolink( $finfo ), $finfo->{'..'} );
+      path_file_info( readlink absolute_filename_nolink( $finfo ), $finfo->{'..'} );
     $finfo->{LSTAT} or lstat_array( $finfo );
   }
   die 'symlink: infinite loop trying to resolve symbolic link ', &absolute_filename, "\n";
@@ -432,18 +431,55 @@ before using the above code snippet.
 =cut
 
 sub file_info {
-  return $_[0] if ref $_[0];	# Don't do anything if we were already
-				# passed a FileInfo structure.
-  my $file = $case_sensitive_filenames ? $_[0] : lc $_[0];
+  goto &path_file_info if ::is_windows ? $_[0] =~ /[\/\\]/ : $_[0] =~ /\//;
+  my $dinfo = $_[1] || $CWD_INFO;
+  unless( exists $dinfo->{DIRCONTENTS} ) {
+				# If the DIRCONTENTS field doesn't exist, then
+				# we haven't checked yet whether the parent is
+				# a directory or not.
+    if( is_symbolic_link( $dinfo )) { # Follow symbolic links.
+      my $orig_dinfo = $dinfo;
+      $dinfo = dereference $dinfo; # Get where it points to.
+      mark_as_directory( $dinfo ); # Remember that this is a directory.
+      $orig_dinfo->{DIRCONTENTS} = $dinfo->{DIRCONTENTS};
+				# Set the DIRCONTENTS field of the soft link
+				# to point to the DIRCONTENTS of the actual
+				# directory.
+    } else {
+      mark_as_directory( $dinfo ); # Let the wildcard routines know that we
+				# discovered a new directory.
+      publish( $dinfo );	# Alert any wildcard routines.
+    }
+  }
+  if( 3 > length $_[0] ) {
+    if( $_[0] eq '..' ) {	# Go up a directory?
+      return $dinfo = $dinfo->{'..'} || $root; # Don't go up above the root.
+    } elsif( $_[0] eq '.' ) {	# Do nothing in same directory.
+      return $dinfo;
+    }
+  }
+  $dinfo->{DIRCONTENTS}{case_sensitive_filenames ? $_[0] : lc $_[0]} ||=
+    bless { NAME => case_sensitive_filenames ? $_[0] : lc $_[0], '..' => exists $dinfo->{LINK_DEREF} ? dereference $dinfo : $dinfo };
+}
+
+=head2 path_file_info
+
+Does the work of file_info when I<filename> contains directory separators.  You can call this
+explicitly in places where I<filename> is (almost) sure to have directory separators.
+
+=cut
+
+sub path_file_info {
+  my $file = case_sensitive_filenames ? $_[0] : lc $_[0];
 				# Copy the file name only if we continue.
 				# Switch to all lower case to avoid
 				# confounds with mix case.
   my $dinfo;			# The fileinfo we start from.
 
-  $file =~ tr|\\|/| if ::is_windows > 0 && $file !~ /\//; # Sometimes gives 'C:\'
+  $file =~ tr|\\|/| if ::is_windows; # 'C:\temp/foo' is a valid file name
 
-  if( $file =~ s@^/@@s ) {
-    if( ::is_windows && $file =~ s@^(/[^/]+/[^/]+)/?@@s ) {
+  if( $file =~ s@^/+@@s ) {
+    if( ::is_windows && length( $file ) + 2 == length( $_[0] ) && $file =~ s@^([^/]+/[^/]+)/?@@s ) {
 				# If we get a //server/share syntax, treat the
 				# "/server/share" piece as one directory, since
 				# it is never legal to try to access //server
@@ -451,22 +487,26 @@ sub file_info {
 				# This has the odd effect of making the top
 				# level directory's filename actually have
 				# a couple of slashes in it, but that's ok.
-      $dinfo = $root->{DIRCONTENTS}{$1} ||=
-	bless { NAME => $1, '..' => $root };
-      unless( exists $dinfo->{DIRCONTENTS} ) {
-	mark_as_directory($dinfo); # Let the wildcard routines know that we
+      my $share = "/$1";
+      if( -e $share ) {		# False alarm, e.g. //bin/ls
+	substr $file, 0, 0, $1;
+	$dinfo = $root;
+      } else {
+	$dinfo = $root->{DIRCONTENTS}{$share} ||=
+	  bless { NAME => $share, '..' => $root };
+	unless( exists $dinfo->{DIRCONTENTS} ) {
+	  mark_as_directory($dinfo); # Let the wildcard routines know that we
 				# discovered a new directory.
-	publish($dinfo);	# Alert any wildcard routines.
+	  publish($dinfo);	# Alert any wildcard routines.
+	}
       }
     } else {
       $dinfo = $root;
     }
+  } elsif( ::is_windows && $file =~ /^[A-Z]:/is ) {
+    $dinfo = $root;		# Treat "C:" as if it's in the root directory.
   } else {
-    if( ::is_windows && $file =~ /^[A-Za-z]:/s ) {
-      $dinfo = $root;		# Treat "C:" as if it's in the root directory.
-    } else {
-      $dinfo = $_[1] || $CWD_INFO;
-    }
+    $dinfo = $_[1] || $CWD_INFO;
   }
 
   for( split /\/+/, $file ) { # Handle each piece of the filename.
@@ -481,34 +521,35 @@ sub file_info {
 				# a directory or not.
       if( is_symbolic_link( $dinfo )) { # Follow symbolic links.
 	my $orig_dinfo = $dinfo;
-	$dinfo = dereference( $dinfo ); # Get where it points to.
-	mark_as_directory($dinfo); # Remember that this is a directory.
+	$dinfo = dereference $dinfo; # Get where it points to.
+	mark_as_directory( $dinfo ); # Remember that this is a directory.
 	$orig_dinfo->{DIRCONTENTS} = $dinfo->{DIRCONTENTS};
 				# Set the DIRCONTENTS field of the soft link
 				# to point to the DIRCONTENTS of the actual
 				# directory.
       } else {
-	mark_as_directory($dinfo); # Let the wildcard routines know that we
+	mark_as_directory( $dinfo ); # Let the wildcard routines know that we
 				# discovered a new directory.
-	publish($dinfo);	# Alert any wildcard routines.
+	publish( $dinfo );	# Alert any wildcard routines.
       }
-
     }
 
 #
 # At this point, $dinfo points to the the parent directory.  Now handle the
 # file:
 #
-    if( $_ eq '..' ) {		# Go up a directory?
-      $dinfo = $dinfo->{'..'} || $root;
-				# Don't go up above the root.
-    } elsif( $_ ne '.' ) {	# Do nothing in same directory.
-      $dinfo = ($dinfo->{DIRCONTENTS}{$_} ||=
-		bless { NAME => $_, '..' => exists $dinfo->{LINK_DEREF} ? dereference $dinfo : $dinfo });
+    if( 3 > length ) {
+      if( $_ eq '..' ) {		# Go up a directory?
+	$dinfo = $dinfo->{'..'} || $root; # Don't go up above the root.
+	next;
+      } elsif( $_ eq '.' ) {	# Do nothing in same directory.
+	next;
+      }
+    }
+    $dinfo = ($dinfo->{DIRCONTENTS}{$_} ||=
+	      bless { NAME => $_, '..' => exists $dinfo->{LINK_DEREF} ? dereference $dinfo : $dinfo });
 				# Point to the entry for the file, or make one
 				# if there is not one already.
-    }
-
   }
 
   $dinfo;
@@ -543,7 +584,7 @@ this kind of directory, use is_or_will_be_dir().
 
 =cut
 
-sub is_dir { (((&lstat_array)->[STAT_MODE] || 0) & S_IFDIR) ? $_[0] : undef }
+sub is_dir { S_ISDIR( (&lstat_array)->[STAT_MODE] || 0 ) ? $_[0] : undef }
 
 =head2 is_or_will_be_dir
 
@@ -559,7 +600,7 @@ sub is_or_will_be_dir {
   my $dinfo = $_[0];
   my $result = $dinfo->{DIRCONTENTS} ||
     (($dinfo->{LSTAT} || &lstat_array),
-     ((exists $dinfo->{LINK_DEREF} ? &dereference : $dinfo)->{LSTAT}[STAT_MODE] || 0) & S_IFDIR) ?
+     S_ISDIR( (exists $dinfo->{LINK_DEREF} ? &dereference : $dinfo)->{LSTAT}[STAT_MODE] || 0 )) ?
       $dinfo : undef;
   if($FileInfo::directory_first_reference_hook) {
     $dinfo=$dinfo->{'..'} unless $result;
@@ -628,7 +669,7 @@ sub is_readable {
 # Checking for readability is very complicated and file-system
 # dependent, so we just try to open the file.
 #
-  if ($stat->[STAT_MODE] & S_IFDIR) {	# A directory?
+  if( S_ISDIR $stat->[STAT_MODE] ) {	# A directory?
     opendir my $fh, &absolute_filename or return undef;
   } else {
     open my $fh, &absolute_filename or return undef;
@@ -698,22 +739,16 @@ sub is_writable {
   ($dirstat->[STAT_MODE] & 0222) == 0 and
     return $dirinfo->{IS_WRITABLE} = 0;
 
-  if ($> == 0 && $FileInfo::uid_for_check != 0) {
-				# Are we running as root?
-    $> = $FileInfo::uid_for_check; # Check with a different UID because root
-    $) = $FileInfo::gid_for_check; # can read too much.
-				# See setting of uid_for_check for an
-				# explanation of why.
-    my $retval = &is_writable;	# Run the check.
-    $> = $FileInfo::orig_uid;	# Restore the UID/GID.
-    $) = $FileInfo::orig_gid;
-    return $retval;
-  }
   my $test_fname = &absolute_filename_nolink . '/.makepp_test';
   my $len = length $test_fname;
   substr $test_fname, $len, -1, substr rand, 1 while
     -e $test_fname;		# Try to create a file with an unlikely name
 				# which goes away automatically at the end.
+
+  local( $>, $) ) = @ids_for_check # Check with a different UID because root
+				# can write too much.  See setting of ids_for_check
+				# for an explanation of why.
+    if !$> && $ids_for_check[0]; # Are we running as root?
 
   if( open my $fh, '>', $test_fname ) { # Can we create such a file?
       close $fh;
@@ -732,7 +767,7 @@ Determines if a given file is writable by its owner by just checking the
 mode bits.  This does not test whether the current user is the owner.
 
 =cut
-sub is_writable_owner { (((&stat_array)->[STAT_MODE] || 0) & S_IWUSR) != 0 }
+sub is_writable_owner { ((&stat_array)->[STAT_MODE] || 0) & 0200 }
 
 =head2 link_to
 
@@ -785,7 +820,7 @@ sub lstat_array {
     }
     if( lstat &absolute_filename_nolink ) { # Restat the file, and cache the info.
 				# File actually exists?
-      $stat_arr = $fileinfo->{LSTAT} = [ (lstat _)[STAT_VECTOR] ];
+      $stat_arr = $fileinfo->{LSTAT} = [(lstat _)[2, 3, 4, 7, 9]]; # These must correspond to STAT_* above!
       if( -l _ ) {		# Profit from the open stat structure, unless it's a symlink.
 	undef $fileinfo->{LINK_DEREF};
       } else {
@@ -797,9 +832,11 @@ sub lstat_array {
 # directory so all the wildcard routines know about it.	 Otherwise we'll miss
 # a lot of files.
 #
-	-d _ and		# Now it's a directory?
-	  $fileinfo->{DIRCONTENTS} || # Previously known as a dir?
-	  &mark_as_directory;	# Tell the wildcard system about it.
+	if( -d _ ) {		# Now it's a directory?
+	  $fileinfo->{LSTAT}[STAT_DEV] = (lstat _)[0]; # Add this field.
+	  $fileinfo->{DIRCONTENTS} or # Previously known as a dir?
+	    &mark_as_directory;	# Tell the wildcard system about it.
+	}
       }
       until( $fileinfo->{EXISTS} ) {
 	$fileinfo->{EXISTS} = 1;
@@ -930,7 +967,7 @@ sub read_directory {
   &mark_as_directory;		# Make sure we know this is a directory.
   foreach( readdir $dirhandle ) {
     next if $_ eq '.' || $_ eq '..'; # Skip the standard subdirectories.
-    $case_sensitive_filenames or $_ = lc;
+    case_sensitive_filenames or tr/A-Z/a-z/;
     my $finfo = ($dirinfo->{DIRCONTENTS}{$_} ||=
 		 bless { NAME => $_, '..' => $dirinfo });
 				# Get the file info structure, or make
@@ -1173,7 +1210,7 @@ sub publish {
   }
 }
 
-$CWD_INFO = file_info(cwd);
+$CWD_INFO = file_info cwd;
 				# Store the current directory so we know how
 				# to handle relative file names.
 #
@@ -1186,15 +1223,9 @@ $CWD_INFO = file_info(cwd);
 # this with a special purpose hack where if we're running as root, we
 # actually do the check with the UID and GID of whoever owns the directory.
 #
-
-if ($> == 0) {			# Are we running as root?
-  ($FileInfo::orig_uid, $FileInfo::orig_gid) = ($>, $));
-				# Save the original IDs.
-  ($FileInfo::uid_for_check, $FileInfo::gid_for_check) =
-    @{stat_array( $CWD_INFO )}[STAT_UID, STAT_GID];
-				# Use the UID of whoever owns the current
-				# directory.
-}
+@ids_for_check = (stat absolute_filename $CWD_INFO)[4, 5]
+				# Use the IDs of whoever owns the current directory,
+  unless $>;			# if we running as root?
 
 $ENV{HOME} ||= (::is_windows > 0 ? $ENV{USERPROFILE} : eval { (getpwuid $<)[7] }) || '.';
 dereference file_info $ENV{HOME};
@@ -1250,7 +1281,6 @@ signature (1 arg)
 stat_array (1 arg)
 symlink (2 args)
 unlink (1 arg)
-_valid_alt_versions (1 arg)
 was_built_by_makepp (1 arg)
 
 =head1 AUTHOR

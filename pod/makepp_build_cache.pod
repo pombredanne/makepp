@@ -2,7 +2,7 @@
 
 makepp_build_cache -- How to set up and use build caches
 
-=for vc $Id: makepp_build_cache.pod,v 1.20 2007/07/28 18:20:13 pfeiffer Exp $
+=for vc $Id: makepp_build_cache.pod,v 1.21 2008/07/09 20:51:26 pfeiffer Exp $
 
 =head1 DESCRIPTION
 
@@ -543,7 +543,7 @@ blend all the groups you specify into one group.
 
 Doing this for clean may have unwanted effects, if you can hard link to
 symlinks, because it may migrate members from one group to another.
-Subsequent non blended cleans, may then clena them form the original group
+Subsequent non blended cleans, may then clean them form the original group
 prematurely.
 
 =item -c spec
