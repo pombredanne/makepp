@@ -1,4 +1,4 @@
-# $Id: Makesubs.pm,v 1.163 2008/08/04 21:48:57 pfeiffer Exp $
+# $Id: Makesubs.pm,v 1.165 2008/12/14 17:03:46 pfeiffer Exp $
 ###############################################################################
 #
 # This package contains subroutines which can be called from a makefile.
@@ -109,6 +109,14 @@ sub scanner_skip_word {
   (
    # These words usually introduce another command
    # which actually is the real compilation command:
+   ash		=> \&scanner_skip_word,
+   bash		=> \&scanner_skip_word,
+   csh		=> \&scanner_skip_word,
+   ksh		=> \&scanner_skip_word,
+   sh		=> \&scanner_skip_word,
+   tcsh		=> \&scanner_skip_word,
+   zsh		=> \&scanner_skip_word,
+
    ccache	=> \&scanner_skip_word,
    condor_compile => \&scanner_skip_word,
    diet		=> \&scanner_skip_word, # dietlibc
@@ -120,7 +128,6 @@ sub scanner_skip_word {
    purecov	=> \&scanner_skip_word,
    purify	=> \&scanner_skip_word,
    quantify	=> \&scanner_skip_word,
-   sh		=> \&scanner_skip_word,
    time		=> \&scanner_skip_word,
    if		=> \&scanner_skip_word, # Sometimes people do things like
    then		=> \&scanner_skip_word, # "if gcc main.o -labc -o my_program; ..."
@@ -428,7 +435,7 @@ sub f_find_program {
 	my( $exists_exe, $finfo_exe );
 	$exists_exe = FileInfo::exists_or_can_be_built $finfo_exe = FileInfo::path_file_info "$name.exe", $makefile->{CWD}
 	  if !$exists ||
-	    $_[3] && $FileInfo::stat_exe_separate ? !$finfo->{EXISTS} : !open my $fh, '<', absolute_filename $finfo;
+	    $_[3] && $FileInfo::stat_exe_separate ? !exists $finfo->{EXISTS} : !open my $fh, '<', absolute_filename $finfo;
 				# Check for exe, but don't bother returning it, unless full path wanted.
 				# If stat has .exe magic, EXISTS is meaningless.
 	return $_[3] ? absolute_filename( $finfo_exe ) : $name if $exists_exe;
@@ -452,7 +459,7 @@ sub f_find_program {
 	my( $exists_exe, $finfo_exe );
 	$exists_exe = FileInfo::exists_or_can_be_built $finfo_exe = file_info( "$name.exe", $dir ), undef, undef, 1
 	  if !$exists ||
-	    $_[3] && $FileInfo::stat_exe_separate ? !$finfo->{EXISTS} : !open my $fh, '<', absolute_filename $finfo;
+	    $_[3] && $FileInfo::stat_exe_separate ? !exists $finfo->{EXISTS} : !open my $fh, '<', absolute_filename $finfo;
 				# Check for exe, but don't bother returning it, unless full path wanted.
 	return $_[3] ? absolute_filename( $finfo_exe ) : $name if $exists_exe;
       }

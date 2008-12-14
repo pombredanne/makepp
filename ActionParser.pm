@@ -1,4 +1,4 @@
-# $Id: ActionParser.pm,v 1.34 2008/07/30 23:17:01 pfeiffer Exp $
+# $Id: ActionParser.pm,v 1.37 2008/12/14 17:11:57 pfeiffer Exp $
 
 =head1 NAME
 
@@ -50,7 +50,7 @@ package ActionParser;
 use TextSubs;
 use Rule;
 use CommandParser;
-use FileInfo;
+use FileInfo qw(file_info relative_filename);
 use FileInfo_makepp;
 
 =head1 METHODS
@@ -152,10 +152,13 @@ sub parse_rule {
       my $makefile_cmd = $rule->{MAKEFILE}{PACKAGE} . "::c_$cmd";
       if( defined &$makefile_cmd ) { # Function directly or indirectly from makefile?
 	require B if !::is_perl_5_6;
-	$rule->add_dependency( ::is_perl_5_6 ?
-			       $rule->makefile->{MAKEFILE} :
-			       file_info B::svref_2object( \&$makefile_cmd )->START->file, $rule->build_cwd
-			      );
+	my $cwd = $rule->build_cwd;
+	add_simple_dependency( '.', $cwd, $rule,
+			       relative_filename ::is_perl_5_6 ?
+				 $rule->makefile->{MAKEFILE} :
+				 # For '.' this returns a relative name to where use was performed, but we might be somewhere else now :-(
+				 FileInfo::path_file_info( B::svref_2object( \&$makefile_cmd )->FILE, $cwd ),
+				 $cwd );
       } elsif( defined &{"Makecmds::c_$cmd"} ) { # Builtin Function?
 	# TODO: Should we use our knowledge of the builtins to find out exactly what files
 	# they handle?  That would mean redoing half of what they'll really do, like option
@@ -335,7 +338,7 @@ backward compatibility.
 =cut
 
 sub find_command_parser {
-  my ($self,$command, $rule, $dir, $found)=@_;
+  my( undef, $command, $rule, $dir, $found ) = @_;
   my $firstword;
   if( ($firstword) = $command =~ /^\s*(\S+)/ ) {
     if( ::is_windows < 2 && $firstword =~ /['"\\]/ ) {	# Cheap way was not good enough.
@@ -401,12 +404,11 @@ ordinary function, and the parameter list is prepended with the Rule object.
 =cut
 
 sub relative_path {
-  my ($dir, $name)=@_;
-  die if ref $name;
-  my $base = $dir;
-  die unless defined($base) && $base ne "";
-  return $name if $name =~ m@^/@ || $base eq ".";
-  "$base/$name";
+#  my ($dir, $name)=@_;
+  die if ref $_[1];
+  die unless defined $_[0] && $_[0] ne '';
+  return $_[1] if $_[1] =~ m@^/@ || $_[0] eq '.';
+  "$_[0]/$_[1]";
 }
 
 # NOTE: $finfo can be either a filename of a FileInfo object. If it's undefined,
@@ -424,11 +426,11 @@ sub add_any_dependency_ {
     die unless defined $incname;
   }
   return 1 if $incname eq "";	# This is an error, so don't add a dep
-  my $method = $meta ? "add_meta_dependency" : "add_implicit_dependency";
+  my $method = $meta ? 'add_meta_dependency' : 'add_implicit_dependency';
   $rule->$method(
     $tag,
     (defined $src and
-     FileInfo::relative_filename FileInfo::is_or_will_be_dir( $src ) || $src->{".."}, $rule->build_cwd),
+     relative_filename FileInfo::is_or_will_be_dir( $src ) || $src->{'..'}, $rule->build_cwd),
     $incname,
     $finfo
   ) and $meta and do {
@@ -447,7 +449,7 @@ sub add_optional_dependency {
   my ($dir, $dirinfo, $rule, $name, $simple) = @_;
   die if ref $name;
   my $finfo = file_info($name, $dirinfo);
-  undef $finfo unless FileInfo::exists_or_can_be_built( $finfo );
+  undef $finfo unless FileInfo::exists_or_can_be_built $finfo;
   add_any_dependency_(
     $dir, $dirinfo, $rule,
     !$simple,

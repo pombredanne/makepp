@@ -1,4 +1,4 @@
-# $Id: Rule.pm,v 1.92 2008/08/04 21:57:01 pfeiffer Exp $
+# $Id: Rule.pm,v 1.96 2008/12/14 17:10:01 pfeiffer Exp $
 use strict qw(vars subs);
 
 package Rule;
@@ -223,22 +223,24 @@ sub find_all_targets_dependencies {
   # Try to get the scanner results from the build info, and failing that
   # scan from scratch. (Well, not completely from scratch, because the cached
   # lists of include directives can still be used if they're up-to-date.)
-  if(my $msg=$self->load_scaninfo(
-      $oinfo, $command_string, \@explicit_dependencies
-    )
-  ) {
+  if( my $msg = $self->load_scaninfo( $oinfo, $command_string, \@explicit_dependencies )) {
     ::log SCAN_RULE => $oinfo, $msg
       if $::log_level;
     unless(eval { $self->parser->parse_rule($command_string, $self) }) {
-      die $@ if $@ && $@ !~ /^SCAN_FAILED\s/;
+      die $@ if $@ && $@ ne "SCAN_FAILED\n";
       $self->{SCAN_FAILED} ||= 1;
     }
 				# Look for any additional dependencies (or
 				# targets) that we didn't know about.
-  }
-  else {
+  } else {
     ::log SCAN_CACHED => $oinfo
       if $::log_level;
+  }
+
+  for my $dep ( @explicit_dependencies, values %all_dependencies ) {
+    FileInfo::mark_build_info_for_update $dep
+	if $dep->{BUILD_INFO} && delete $dep->{BUILD_INFO}{RESCAN};
+				# From mppr -- we're done with this now.
   }
 
 #
@@ -607,11 +609,11 @@ sub load_scaninfo_single {
 
   # Fetch the info, or give up
   my( $build_cwd_name, $sig_method, $include_paths, $include_sfxs, $meta_deps,
-      $implicit_deps, $implicit_targets, $implicit_env_deps, $command ) =
-    FileInfo::build_info_string( $tinfo_version,
-				 qw(CWD SIG_METHOD_NAME INCLUDE_PATHS INCLUDE_SFXS
-				    META_DEPS IMPLICIT_DEPS IMPLICIT_TARGETS
-				    IMPLICIT_ENV_DEPS COMMAND) );
+      $implicit_deps, $implicit_targets, $implicit_env_deps, $command, $rescan ) =
+    FileInfo::build_info_string $tinfo_version,
+      qw(CWD SIG_METHOD_NAME INCLUDE_PATHS INCLUDE_SFXS META_DEPS IMPLICIT_DEPS
+	 IMPLICIT_TARGETS IMPLICIT_ENV_DEPS COMMAND RESCAN);
+  return $rescan == 1 ? 'signed by makeppreplay' : 'built by makeppreplay' if $rescan;
   $include_sfxs ||= '';
   $implicit_env_deps ||= '';
 
@@ -830,9 +832,10 @@ sub execute {
 
   # Check for a symlink that doesn't need rebuilding, even though the linkee got built.
   if( @$all_targets == 1 && exists $all_targets->[0]{TEMP_BUILD_INFO} ) {
-    if( $actions eq $all_targets->[0]{TEMP_BUILD_INFO}{COMMAND} &&
+    if( $actions eq $all_targets->[0]{TEMP_BUILD_INFO}{COMMAND} and
 	$all_targets->[0]{TEMP_BUILD_INFO}{SYMLINK} eq
-	  readlink( FileInfo::absolute_filename_nolink $all_targets->[0] ) || '' ) {
+	  readlink( FileInfo::absolute_filename_nolink $all_targets->[0] ) || '' and
+	file_exists file_info $all_targets->[0]{TEMP_BUILD_INFO}{SYMLINK}, $all_targets->[0]{'..'} ) {
       $all_targets->[0]{BUILD_INFO} = delete $all_targets->[0]{TEMP_BUILD_INFO};
       $::n_files_changed--;	# Don't count this one, since we're not rebuilding it.
       ::log SYMLINK_KEEP => $all_targets->[0], $self->source
@@ -1179,7 +1182,7 @@ sub execute_command {
   # Close filehandles that may have been left opened by a perl command.
   if( $maybe_open || $unsafe ) {
     if( ::is_perl_5_6 ) {
-      close $_ for @::close_fhs, values %{$self->{MAKEFILE}{PACKAGE}.'::'};
+      close $_ for @::close_fhs, ::MAKEPP ? values %{$self->{MAKEFILE}{PACKAGE}.'::'} : ();
     }
     exec $true;			# Close open filehandles w/o doing garbage collection
     warn "failed to exec `$true'--$!";

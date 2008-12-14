@@ -2,7 +2,7 @@
 
 makepp -- Compatible but improved replacement for make
 
-=for vc $Id: makepp.pod,v 1.27 2007/05/17 11:48:39 pfeiffer Exp $
+=for vc $Id: makepp.pod,v 1.28 2008/11/23 21:20:40 pfeiffer Exp $
 
 =head1 SYNOPSIS
 
@@ -157,6 +157,10 @@ A stand-alone utility to graphically analyze dependencies and the reasons for a 
 =item L<makepplog, mppl|makepplog>
 
 A stand-alone utility to analyze dependencies and the reasons for a rebuild.
+
+=item L<makeppreplay, mppr|makeppreplay>
+
+A stand-alone utility to repeat things makepp has done, but much faster.
 
 =back
 

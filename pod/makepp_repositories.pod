@@ -3,7 +3,7 @@
 makepp_repositories -- How to use repositories for variant builds, for
 maintaining a central set of sources, and other things
 
-=for vc $Id: makepp_repositories.pod,v 1.18 2008/07/19 21:44:20 pfeiffer Exp $
+=for vc $Id: makepp_repositories.pod,v 1.19 2008/09/28 22:06:57 pfeiffer Exp $
 
 =head1 DESCRIPTION
 
@@ -15,9 +15,13 @@ functionality to the C<VPATH> variable in some versions of make, but (unlike
 C<VPATH>) you do not have to do anything special to your makefile to get them
 to work.
 
-Repositories are specified with the C<-R> or C<--repository> command
-line option (see L<makepp_command/-R>) or with the C<repository>
-statement (see L<makepp_statements/repository>) in the makefile.
+Repositories are specified with the C<-R> or C<--repository> command line
+option (see L<makepp_command/-R>) or with the C<repository> statement (see
+L<makepp_statements/repository>) in the makefile.  Note that if you have a
+habit of calling makepp in different subdirectories of your build tree, it is
+easy to accidentally reimport a repository somewhere else.  As a safeguard
+against this, if you use F<RootMakeppfile>, makepp will refuse to start if it
+finds one above or below where it would be imported.
 
 Repositories are useful in several different situations:
 
@@ -245,7 +249,12 @@ You can do it all with one command, like this:
        makepp -R alternate-build=. -F alternate-build
 
 (C<-F> changes to that directory before loading the makefile.  See
-L<makepp_command/-F> for details.  You must specify C<-R> before C<-F>.)
+L<makepp_command/-F> for details.  You must specify C<-R> before C<-F>.)  Note
+that this example puts the new build tree inside the repository.  That will
+not work if you use a F<RootMakeppfile> because makepp safeguards against
+nested trees.  It's also not a good idea if you use F<**>, because if you ever
+build in the repository it will also find edited and generated files in this
+subtree.
 
 Assigning a different location in the file system may be also useful for
 more complicated builds, where there are several library subdirectories.
@@ -348,13 +357,14 @@ form):
 
 =back
 
-=head3 Don't build in a repository
+=head3 Don't build in a repository during use
 
-A repository is meant to be read-only while it is being used as a
-repository.  Makepp will B<not> work properly if you change files in
-your repository during the course of a build.  Before it starts the
-build, makepp gets a list of all the files that exist in the repository,
-and never updates its list, except for files it expects to appear.
+A repository is meant to be read-only while it is being used as a repository.
+Makepp will B<not> work properly if you change files in your repository during
+the course of a build.  Nightly builds may be ok for you, if noone else uses
+the repository at that time.  Before it starts the build, makepp gets a list
+of all the files that exist in the repository, and never updates its list,
+except for files it expects to appear.
 
 If you need a repository that's changing as you build, you might want to
 consider makepp's build cache mechanism (see L<makepp_build_cache>).

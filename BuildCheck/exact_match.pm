@@ -1,4 +1,4 @@
-# $Id: exact_match.pm,v 1.28 2008/07/30 23:17:01 pfeiffer Exp $
+# $Id: exact_match.pm,v 1.29 2008/09/01 07:47:43 pfeiffer Exp $
 use strict;
 package BuildCheck::exact_match;
 
@@ -141,19 +141,19 @@ sub build_check {
 #
   my( $last_cmd, $arch, $sorted_deps, $dep_sigs, $symlink ) =
     FileInfo::build_info_string( $tinfo, qw(COMMAND ARCH SORTED_DEPS DEP_SIGS SYMLINK) );
-  if( !defined $tinfo->{BUILD_INFO} ) {
+  unless( defined $tinfo->{BUILD_INFO} ) {
     ::log BUILD_NONE => $tinfo
       if $::log_level;
     return 1;
   }
-  if( !%{$tinfo->{BUILD_INFO}} && !$only_action ) {
+  unless( %{$tinfo->{BUILD_INFO}} || $only_action ) {
     ::log BUILD_INVALID => $tinfo
       if $::log_level;
     return 1;
   }
 
-  if( !$ignore_action and !$last_cmd || $command_string ne $last_cmd ) {
-    ::log BUILD_CMD => $tinfo, $last_cmd, $command_string
+  unless( $ignore_action || $last_cmd && $command_string eq $last_cmd ) {
+    ::log BUILD_CMD => $tinfo, $last_cmd || '', $command_string
       if $::log_level;
 
     return 1;

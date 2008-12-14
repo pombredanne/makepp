@@ -2,7 +2,7 @@
 
 makeppgraph -- Graphical analysis of the dependency graph
 
-=for vc $Id: makeppgraph.pod,v 1.11 2008/06/01 21:47:19 pfeiffer Exp $
+=for vc $Id: makeppgraph.pod,v 1.12 2008/11/23 21:02:55 pfeiffer Exp $
 
 =head1 SYNOPSIS
 
@@ -320,9 +320,9 @@ This option can be given multiple times, e.g. for merging all the logs from
 C<--traditional-recursive-make>.  But the dependencies you hid from makepp
 through the evil recursion paradigm can't of course show up here.
 
-=item -M module
+=item -M module[=arg,...]
 
-=item --module=module
+=item --module=module[=arg,...]
 
 Load module and import any functions it exports.
 

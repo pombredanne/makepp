@@ -2,12 +2,13 @@
 
 makepp_builtins -- Builtin commands in makepp
 
-=for vc $Id: makepp_builtins.pod,v 1.37 2008/07/30 23:13:36 pfeiffer Exp $
+=for vc $Id: makepp_builtins.pod,v 1.39 2008/12/14 16:59:28 pfeiffer Exp $
 
 =head1 DESCRIPTION
 
 I<L<B<a>wk|/awk>>,E<nbsp>
 L<&B<c>at|/&cat>, I<L</chgrp>>, L</&chmod>, I<L<chown|/chgrp>>, L</&cp>, L</&cut>,E<nbsp>
+I<L<B<d>ate|/date>>,E<nbsp>
 L<&B<e>cho|/&echo>, L</&expr>,E<nbsp>
 I<L<B<f>alse|/false>>,E<nbsp>
 L<&B<g>rep|/&grep>,E<nbsp>
@@ -267,7 +268,18 @@ Standard options: C<-A, --args-file, --arguments-file=filename, -f, --force, -v,
 
 =item --link
 
-Try to link the files.  If that fails, copy.
+Try to link the files.  If that fails, try symbolic link, if that is also
+requested, else copy.
+
+=item -s
+
+=item --symbolic
+
+=item --symbolic-link
+
+=item --symlink
+
+Try to symbolically link the files.  If that fails, copy.
 
 =back
 
@@ -360,6 +372,13 @@ Print only lines containing delimiters.
     &cut -c 10-20,-5,25- $(input)
     &cut -d: --fields 0,4 --printf='%10s is %s\n' /etc/passwd
 
+
+=item date
+
+Not built in, but either of these partially does the same thing:
+
+    &expr localtime
+    &expr gmtime
 
 
 =item &echo [option ...] string ...

@@ -2,7 +2,7 @@
 
 makepp_compatibility -- Compatibility list for makepp
 
-=for vc $Id: makepp_compatibility.pod,v 1.17 2008/08/09 09:34:03 pfeiffer Exp $
+=for vc $Id: makepp_compatibility.pod,v 1.18 2008/10/15 21:30:24 pfeiffer Exp $
 
 =head1 DESCRIPTION
 
@@ -80,6 +80,8 @@ formats.
 
  MinGW MSYS	#	| Win	|	#	|	|	|	|	|	|	|	|	#	#
 
+ Stawberry	#	|	|	#	|	|	|	|	|	|	|	| x	# x	#
+
  Windows	# Win	| Win	|	# x	| x	| x	| x	| x	|	| x	| x	| x	# x	#
 
 =for html </table>
@@ -100,7 +102,7 @@ probably ok using these Perls.
 
 =item Win
 
-There are 3 different Perl environments on Windows, which normally extend one
+There are 4 different Perl environments on Windows, which normally extend one
 another when installed in parallel.  Here they have been tested with a minimal
 PATH, so as to separate them completely:
 
@@ -108,15 +110,15 @@ PATH, so as to separate them completely:
 
 =item *
 
-Cygwin fairly closely emulates GNU/Linux and gives the best results.  Perl
+B<Cygwin> fairly closely emulates GNU/Linux and gives the best results.  Perl
 5.8.7 has a small problem with environment vars, making one test fail.  In the
 long gone past, parallel builds didn't work, but it hasn't be verified which
 version of Cygwin or Perl made them usable.
 
 =item *
 
-MinGW stays close to Windows, giving it only a Unixy look and feel.  It has a
-clever workaround for lack of symbolic links, namely copying instead (C<&ln>
+B<MinGW> stays close to Windows, giving it only a Unixy look and feel.  It has
+a clever workaround for lack of symbolic links, namely copying instead (C<&ln>
 has stolen this idea).  Alas this is not good enough for the B<repository>
 mechanism, so that isn't available, in addition to the Cygwin deficiencies.
 
@@ -126,18 +128,26 @@ makeppgraph test), at least with MD5 support.  But with very few packages
 
 =item *
 
-On ActiveState Perl with only native Windows most customary Unix commands are
-missing, and the "shell" is extremely primitive.  A maximal use of makepp's
-builtin commands and embedded Perl can increase makefile portability.  While
-Windows programs can handle normal slashes as directory separators, this does
-not work for command names.  Those should be written as F<dir$/command>, where
-C<$/> is a forward or backward slash, depending on the environment.  If you
-tell makepp, via the SHELL variable, where to find a a Unix-like Shell, you
-don't have these worries.
+On B<Strawberry> Perl with only native Windows most customary Unix commands
+(except Gnu compilers) are missing, and the "shell" is extremely primitive.  A
+maximal use of makepp's builtin commands and embedded Perl can increase
+makefile portability.  The builtin C<&ln> command may need C<set
+MAKEPP_LN_CP=1> or C<3>, depending on your file system.
+
+While Windows programs can handle normal slashes as directory separators, this
+does not work for command names.  Those should always be portably written as
+F<dir$/command>, where C<$/> is a forward or backward slash, depending on the
+environment.  If you tell makepp, via the SHELL variable, where to find a a
+Unix-like Shell, you don't have these worries.
 
 It cannot do smart recursive makes (but who would want them, since they are
-known to be a broken paradigm) and B<parallel> builds.  Perl 5.6.0 fails on
-quite a few tests, especially with $SHELL, 5.6.1 fails on two tests.  It will
+known to be a broken paradigm) and B<parallel> builds.
+
+=item *
+
+B<ActiveState> Perl is very similar to Strawberry, as far as makepp goes,
+though it doesn't come with Gnu compilers.  Perl 5.6.0 fails on quite a few
+tests, especially with $SHELL, 5.6.1 fails on two tests.  Up to 5.8.6, it will
 rewrite FileInfo.pm so as to have a needed workaround for an lstat bug.
 
 =back
@@ -189,7 +199,7 @@ access to this very welcome precision.
 The same CIFS disk that was works so badly on Linux, passes all tests on
 Cygwin.  Possibly there are options that might improve something.
 
-=item Unix SMBFS on Gnu/Linux
+=item Unix SMBFS from Gnu/Linux
 
 Linking and symbolic linking fails.  No other tests fail.  I have no access to
 a more realistic Windows SMB server, where the situation might be different.

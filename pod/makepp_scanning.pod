@@ -2,7 +2,7 @@
 
 makepp_scanning -- How makepp finds include files and other hidden dependencies
 
-=for vc $Id: makepp_scanning.pod,v 1.11 2006/10/16 21:55:37 pfeiffer Exp $
+=for vc $Id: makepp_scanning.pod,v 1.12 2008/12/14 17:10:03 pfeiffer Exp $
 
 =head1 DESCRIPTION
 
@@ -31,11 +31,13 @@ means that you buried your compiler command too deeply in the action for
 makepp to find it.  For example, I have seen rules like this:
 
     %.o: %.c
- 	@echo Compiling $< now
- 	@gcc -c $< $(CFLAGS) -o $@
+ 	@echo Compiling $< now; obscure_wrapper gcc -c $< $(CFLAGS) -o $@
 
-The first word of the action here is C<echo>, for which therer is no
-scanner, so makepp will not scan for include files in this case.
+The first words of the actions here are C<echo> and C<obscure_wrapper>, for
+which therer are no scanners, so makepp will not scan for include files in
+this case.  You can ignore the prefixed command by:
+
+    register_scanner obscure_wrapper scanner_skip_word
 
 =head2 C/C++ compilation
 
@@ -53,11 +55,11 @@ see if there are any source files or libraries mentioned which are not
 listed as dependencies.  It recognizes these by their extension.
 
 This scanner gives a warning message if files included with S<C<#include
-"file.h">> are not found in the include path, or in the directory
-containing the file which is C<#includ>ing, or in F</usr/include>.  No
-warning is given if a file included with S<C<#include E<lt>file.hE<gt>>>
-is not found.  makepp assumes it is in some system include directory
-that the compiler knows about, and that files in system include
+"file.h">> are not found, or not buildable by makepp, in the include path, or
+in the directory containing the file which is C<#includ>ing, or in
+F</usr/include>.  No warning is given if a file included with S<C<#include
+E<lt>file.hE<gt>>> is not found.  makepp assumes it is in some system include
+directory that the compiler knows about, and that files in system include
 directories won't change.
 
 In addition, files in F</usr/include>, F</usr/local/include>,
@@ -180,6 +182,12 @@ Note that the behavior of C<Scanner> can be markedly affected by this
 distinction, but that should be transparent to the derived class if it
 is well-formed.
 New derived C<Scanner> classes ought to be tested in both modes.
+
+If you write your own C<Scanner> class, you should also base your rescanning
+decision on the build info C<RESCAN>.  This gets set by C<makeppreplay> after
+signing files without scanning.  So despite the signatures being consistent, a
+rescan is still necessary.  If your C<Scanner> uses the inherited
+C<scan_file1> method, you're probably fine.
 
 If you want to specify a particular C<CommandParser> class for a rule, then
 you can specify a scanner with a rule option, and arrange for the parser_*
