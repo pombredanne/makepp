@@ -1,8 +1,11 @@
 #!/usr/bin/perl -w
-#TODO: when losing BECAUSE child thru merge, become {SELF}BECAUSE
-use strict;
+# $Id: makeppgraph,v 1.20 2009/02/21 11:28:49 pfeiffer Exp $
 
-# $Id: makeppgraph,v 1.16 2008/11/23 21:02:55 pfeiffer Exp $
+#TODO: when losing BECAUSE child thru merge, become {SELF}BECAUSE
+
+package Mpp;
+
+use strict;
 
 our $VERSION = '@VERSION@';
 use POSIX ();
@@ -23,7 +26,7 @@ BEGIN {
 				# Add '.' to the path in case the user is
 				# running it with "perl makepp" even if
 				# . is not in his path.
-      if( -f "$_/Glob.pm" ) {	# Found something we need?
+      if( -d "$_/Mpp" ) {	# Found something we need?
 	$datadir = $_;
 	last;
       }
@@ -37,11 +40,11 @@ BEGIN {
   unshift @INC, $datadir;
 }
 
-use Utils;
-use Glob ();
-use FileInfo qw(absolute_filename file_info $CWD_INFO);
-use FileInfo_makepp;
-use TextSubs ();
+use Mpp::Utils;
+use Mpp::Glob ();
+use Mpp::File;
+use Mpp::FileOpt;
+use Mpp::Text ();
 
 sub eval_or_die($) {
   my $result = eval $_[0];
@@ -50,20 +53,20 @@ sub eval_or_die($) {
 }
 
 BEGIN {
-  *DEPEND = \&TextSubs::CONST1;
-  *INCL = \&TextSubs::CONST2;
-  *PHONY = \&TextSubs::CONST2;
-  *BECAUSE = \&TextSubs::CONST4;
+  *DEPEND = \&Mpp::Text::CONST1;
+  *INCL = \&Mpp::Text::CONST2;
+  *PHONY = \&Mpp::Text::CONST2;
+  *BECAUSE = \&Mpp::Text::CONST4;
 
-  *Makefile::implicitly_load = \&TextSubs::CONST0; # Don't need to and not able to do real stuff.
+  *Mpp::Makefile::implicitly_load = \&Mpp::Text::CONST0; # Don't need to and not able to do real stuff.
 }
 sub SELF() { '' }		# Impossible node name used for own attributes.
 
-my $home = absolute_filename FileInfo::dereference file_info $ENV{HOME};
-$datadir = absolute_filename FileInfo::dereference file_info $datadir;
+my $home = absolute_filename dereference file_info $ENV{HOME};
+$datadir = absolute_filename dereference file_info $datadir;
 
 
-package Rewrite;
+package Mpp::Rewrite;
 
 # Reduce any file (execept dirs) to the containing directory.
 sub dir() { defined and $_ ne '' and -d || s!/[^/]+$!! || s!^(\|\w+\|).*!$1! }
@@ -72,7 +75,7 @@ sub dir() { defined and $_ ne '' and -d || s!/[^/]+$!! || s!^(\|\w+\|).*!$1! }
 sub home() { defined and s/^$home/~/ }
 
 # Replace makepp dir with abbreviation |m|.
-sub makepp() { defined and s!^$::datadir(?:/|$|(?=:))!|m|! }
+sub makepp() { defined and s!^$Mpp::datadir(?:/|$|(?=:))!|m|! }
 
 # Replace basename including dir or optionally only part of dir with '*'
 sub suf(;$) {
@@ -120,7 +123,7 @@ sub x2($) { merge $_[0], '*2', '', '' }
 
 
 
-package main;
+package Mpp;
 
 
 
@@ -254,7 +257,7 @@ my( @logfiles, $outfile, $plain );
 
 {
   my $tmp;
-  TextSubs::getopts
+  Mpp::Text::getopts
     ['b', qr/because|build[-_]?reasons?/, \$because],
     ['D', qr/dependenc(?:ies|y)/, \$dependencies],
     ['d', qr/down(?:wards?)?/, \$down],
@@ -271,7 +274,7 @@ my( @logfiles, $outfile, $plain );
     ['s', qr/separate[-_]?directions?/, \$bidirectional, 0, 0],
     ['t', qr/te?xt/, \$type, 0, 'txt'],
     ['u', qr/up(?:wards?)?/, \$up],
-    [undef, 'version', undef, undef, \&FileInfo::version],
+    [undef, 'version', undef, undef, \&Mpp::File::version],
 
     [qr/[h?]/, 'help', undef, 0, \&usage];
 }
@@ -332,9 +335,9 @@ my $build_re = $because ?
 
 for( $rename, $merge ) {
   $_ or next;
-  $_ = eval_or_die "package Rewrite; sub { $_ }";
+  $_ = eval_or_die "package Mpp::Rewrite; sub { $_ }";
 }
-$rename ||= \&Rewrite::cwd;
+$rename ||= \&Mpp::Rewrite::cwd;
 
 find_logfiles @logfiles;
 for( $outfile ) {
@@ -350,7 +353,7 @@ for( $outfile ) {
 # Digest the contents of the log file.
 my %graph;
 for( @logfiles ) {
-  open my $log, $_ or die "$::progname: can't open `$_'--$!\n";
+  open my $log, $_ or die "$Mpp::progname: can't open `$_'--$!\n";
 
   <$log>;			# 1st line irrelevant here
 
@@ -440,12 +443,12 @@ for( @logfiles ) {
 
 # Selection from command line.
 if( @ARGV ) {			# Start with the args and follow them up and/or downwards.
-  my $cwd = absolute_filename( FileInfo::dereference $FileInfo::CWD_INFO ) . '/';
+  my $cwd = absolute_filename( dereference $CWD_INFO ) . '/';
   @ARGV =
     grep { substr $_, 0, 0, $cwd unless /^\//; &$rename; $_ ne '' } map glob, @ARGV;
   my %tmp;
 
-  &$::both_up_down( \$outfile, \$up, \$down ) if $::both_up_down; # Hack to speed up the regression
+  &$Mpp::both_up_down( \$outfile, \$up, \$down ) if $Mpp::both_up_down; # Hack to speed up the regression
 				# test, by doing all before here only once for selection.
 
   $up = $down = 1
@@ -548,7 +551,7 @@ if( $merge ) {
 # Here starts the output formatting backend.
 
 
-&$::all_types( $outfile, \$type ) if $::all_types; # Hack to speed up the
+&$Mpp::all_types( $outfile, \$type ) if $Mpp::all_types; # Hack to speed up the
 				# regression test, by doing all before
 				# here only once for both file types.
 

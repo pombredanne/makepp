@@ -2,13 +2,32 @@
 
 makepp_release_notes -- Major changes in each version of makepp
 
-=for vc $Id: makepp_release_notes.pod,v 1.56 2008/11/23 21:20:40 pfeiffer Exp $
+=for vc $Id: makepp_release_notes.pod,v 1.57 2009/02/09 22:07:39 pfeiffer Exp $
 
 =head1 DESCRIPTION
 
 =head2 Version 1.50 (under development)
 
 =over 4
+
+=item *
+
+All internal classes have been moved to the new package C<Mpp::> so as to
+abide by CPAN rules, and to avoid potential collision with any module you
+might load into your makefiles.  This is transparent to casual users of
+makepp.
+
+In case you did Perl programming for your makefiles, and you made use of some
+internals this would break your build.  Therefore there is a temporary
+backward compatibility feature, to be removed in the future, which you can
+activate during installation.  The new environment variable
+C<$MAKEPP_INSTALL_OLD_MODULES> is checked for a list of old modules you want
+created as wrappers around the new ones.  Additionally if you have makefiles
+you can't quickly change, which rely on these things being available without a
+C<use> statement, you must prefix those modules with a C<+>, to get them
+preloaded:
+
+    MAKEPP_INSTALL_OLD_MODULES='+Glob Rule +MakeEvent'
 
 =item *
 
@@ -21,7 +40,8 @@ utility to see somewhat cryptically what makepp knows about some file.
 
 =item *
 
-Ported to IBM z/OS Unix System Services.  Only smart recursive make doesn't work.
+Ported to IBM z/OS Unix System Services.  Only smart recursive make doesn't
+work.
 
 =item *
 
@@ -29,7 +49,8 @@ Makepp has become noticeably faster.
 
 =item *
 
-Abolish the undocumented fancy renaming of only '.' to '_dot_' in variable and function names.
+Abolish the undocumented fancy renaming of only '.' to '_dot_' in variable and
+function names.
 
 =item *
 

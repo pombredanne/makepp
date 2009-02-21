@@ -10,7 +10,7 @@
 #
 
 # Slurp this test into our directory.
-open DATA, "$::source_path/builtins.test" or
+open DATA, "$Mpp::source_path/builtins.test" or
   die "can't find builtins.test near here--$!\n";
 eval { un_spar() };
 
@@ -54,22 +54,22 @@ sub c_clonetest {
     next if !/^&/;
     warn $_;
     chop;
-    my $comment = TextSubs::index_ignoring_quotes( $_, '#' );
+    my $comment = Mpp::Text::index_ignoring_quotes( $_, '#' );
     $_ = substr $_, 0, $comment if $comment > -1;
     $0 = 'makeppbuiltin';
-    @ARGV = TextSubs::unquote_split_on_whitespace( $_ );
+    @ARGV = Mpp::Text::unquote_split_on_whitespace( $_ );
     substr( $ARGV[0], 0, 1 ) = ''; # Remove &
-    eval { ::doit }; warn $@ if $@;
+    eval { Mpp::doit }; warn $@ if $@;
   }
 
   # We don't know how many files we created, but just to satisfy the test harness:
-  Makecmds::c_sed 's/(\d+) (\d+) (\d+)/N_FILES\01$1\01$2\01$3\01/', 'answers/n_files', '-o', '.makepp/log';
+  Mpp::Cmds::c_sed 's/(\d+) (\d+) (\d+)/N_FILES\01$1\01$2\01$3\01/', 'answers/n_files', '-o', '.makepp/log';
 
   # Now do as makeppbuiltin does with --help.
   @ARGV = '--help';
   open STDERR, '>help';
-  for $0 ( sort grep { /^c_/ and defined &{"Makecmds::$_"} } keys %Makecmds:: ) {
-    eval { ::doit };
+  for $0 ( sort grep { /^c_/ and defined &{"Mpp::Cmds::$_"} } keys %Mpp::Cmds:: ) {
+    eval { Mpp::doit };
     warn "\n";
   }
   close STDERR;

@@ -3,13 +3,15 @@
 # This script asks the user the necessary questions for installing
 # makepp and does some heavy HTML massageing.
 #
-# $Id: install.pl,v 1.80 2008/12/14 17:10:01 pfeiffer Exp $
+# $Id: install.pl,v 1.85 2009/02/21 11:28:57 pfeiffer Exp $
 #
+
+package Mpp;
 
 use Config;
 use File::Copy;
-use TextSubs ();
-use FileInfo ();		# ensure HOME is set
+use Mpp::Text ();
+use Mpp::File ();		# ensure HOME is set
 
 system $^X, 'makepp', '--version'; # make sure it got a chance to apply workarounds.
 
@@ -35,12 +37,14 @@ print 'Using perl in ' . PERL . ".\n";
 # files.
 #
 our $eliminate = '';		# So you can say #@@eliminate
-$eliminate = $eliminate if ::is_perl_5_6;
+$eliminate = $eliminate if Mpp::is_perl_5_6;
 open(VERSION, "VERSION") || die "You are missing the file VERSION.  This should be part of the standard distribution.\n";
 our $VERSION = <VERSION>;
+close VERSION;
 our $BASEVERSION = $VERSION;
 chomp $VERSION;
-close VERSION;
+warn "Makepp will be installed with DOS newlines, as you unpacked it.\n" if $VERSION =~ tr/\r//d;
+				# Native Windows chomps \r.
 
 if( $VERSION =~ s/beta// ) {
   $BASEVERSION = $VERSION;
@@ -50,8 +54,8 @@ if( $VERSION =~ s/beta// ) {
 # including year) followed by the count of files checked in that day.  This
 # assumes that we have at least three check ins a year.
 #
-  my %VERSION;
-  for( <makepp *.pm */*.pm makepp_builtin_rules.mk> ) {
+  my %VERSION = qw(0/00/00 0 00/00/00 0); # Default in case all modules change on same day.
+  for( <makepp Mpp{,/*,/*/*}.pm makepp_builtin_rules.mk> ) {
     open my( $fh ), $_;
     while( <$fh> ) {
       if( /\$Id: .+,v [.0-9]+ ([\/0-9]+)/ ) {
@@ -102,11 +106,11 @@ if ($datadir !~ /^\//) {	# Make a relative path absolute.
 }
 
 # prior installation may not have supported .makepp/*.mk files
--r "$datadir/FileInfo_makepp.pm" and
-  (stat "$datadir/FileInfo_makepp.pm")[9] < 1102710870 || # check-in time
+-r "$datadir/Mpp/FileOpt.pm" and
+  (stat "$datadir/Mpp/FileOpt.pm")[9] < 1102710870 || # check-in time
   do {
     my $found;
-    open F, "$datadir/FileInfo_makepp.pm";
+    open F, "$datadir/Mpp/FileOpt.pm";
     while( <F> ) {
       $found = 1, last if /build_info_subdir.+\.mk/;
     }
@@ -152,34 +156,68 @@ if($findbin) {
 @sig_num{split ' ', $Config{sig_name}} = split ' ', $Config{sig_num};
 $USR1 = $sig_num{USR1}; $USR1 = $USR1; 	# suppress used-only-once warning
 
+make_dir("$datadir/$_") for
+  qw(Mpp Mpp/ActionParser Mpp/BuildCheck Mpp/CommandParser Mpp/Scanner Mpp/Signature);
+
+our $useoldmodules = '';
+if( $ENV{MAKEPP_INSTALL_OLD_MODULES} ) {
+  my %packages =		# The renamed or multipackage cases.
+   (BuildCache => [qw(BuildCache BuildCache BuildCache::Entry)],
+    FileInfo => ['FileInfo=File'],
+    FileInfo_makepp => [qw(FileInfo_makepp=FileOpt FileInfo_makepp=File)],
+    Makecmds => ['Makecmds=Cmds'],
+    MakeEvent =>
+      [qw(MakeEvent=Event MakeEvent=Event MakeEvent::Process=Event::Process MakeEvent::WaitingSubroutine=Event::WaitingSubroutine)],
+    Makesubs => ['Makesubs=Subs'],
+    Rule => [qw(Rule Rule DefaultRule DefaultRule::BuildCheck)],
+    TextSubs => ['TextSubs=Text']);
+  for $module ( split ' ', $ENV{MAKEPP_INSTALL_OLD_MODULES} ) {
+    $useoldmodules .= "use $module ();\n"
+      if $module =~ s/\+//;
+    $module = $packages{$module} || [$module]; # Create simple cases on the fly.
+    my( $old, $new ) = shift @$module;
+    $new = ($old =~ s/=(.+)//) ? $1 : $old;
+    my $file = $old;
+    if( $file =~ s!(.+)::!$1/! ) {
+      -d "$datadir/$1" or make_dir("$datadir/$1");
+    }
+    open my $fh, '>', "$datadir/$file.pm" or die "can't create $old.pm\n";
+    print $fh "# generated backwards compatibility wrapper\nuse Mpp::$new;\n";
+    for( @$module ? @$module : "$old=$new" ) {
+      $new = (s/=(.+)//) ? $1 : $_;
+      print $fh "%${_}:: = %Mpp::${new}::;\n";
+    }
+    print $fh '1;';
+  }
+}
+
 substitute_file( $_, $bindir, 0755, 1 ) for
   qw(makepp makeppbuiltin makeppclean makeppgraph makeppinfo makepplog makeppreplay makepp_build_cache_control);
 
 substitute_file( $_, $datadir, 0644 ) for
-  qw(recursive_makepp FileInfo_makepp.pm BuildCacheControl.pm);
+  qw(recursive_makepp Mpp/FileOpt.pm Mpp/BuildCacheControl.pm);
 
-make_dir("$datadir/$_") for
-  qw(ActionParser BuildCheck CommandParser Scanner Signature);
-foreach $module (qw(AutomakeFixer BuildCache FileInfo Glob MakeEvent
-		    Makecmds Makefile Makesubs RecursiveMake Repository
-		    Rule TextSubs Utils
+foreach $module (qw(Mpp
 
-		    ActionParser ActionParser/Legacy ActionParser/Specific
+		    Mpp/AutomakeFixer Mpp/BuildCache Mpp/File Mpp/Glob Mpp/Event
+		    Mpp/Cmds Mpp/Makefile Mpp/Subs Mpp/RecursiveMake Mpp/Repository
+		    Mpp/Rule Mpp/Text Mpp/Utils
 
-		    BuildCheck BuildCheck/architecture_independent
-		    BuildCheck/exact_match BuildCheck/ignore_action
-		    BuildCheck/symlink BuildCheck/target_newer
-		    BuildCheck/only_action
+		    Mpp/ActionParser Mpp/ActionParser/Legacy Mpp/ActionParser/Specific
 
-		    CommandParser CommandParser/Esqlc CommandParser/Gcc
-		    CommandParser/Swig CommandParser/Vcs
+		    Mpp/BuildCheck Mpp/BuildCheck/architecture_independent
+		    Mpp/BuildCheck/exact_match Mpp/BuildCheck/ignore_action
+		    Mpp/BuildCheck/only_action Mpp/BuildCheck/target_newer
 
-		    Scanner Scanner/C Scanner/Esqlc Scanner/Swig Scanner/Vera
-		    Scanner/Verilog
+		    Mpp/CommandParser Mpp/CommandParser/Esqlc Mpp/CommandParser/Gcc
+		    Mpp/CommandParser/Swig Mpp/CommandParser/Vcs
 
-		    Signature Signature/c_compilation_md5 Signature/md5
-		    Signature/shared_object Signature/verilog_simulation_md5
-		    Signature/verilog_synthesis_md5)) {
+		    Mpp/Scanner Mpp/Scanner/C Mpp/Scanner/Esqlc Mpp/Scanner/Swig Mpp/Scanner/Vera
+		    Mpp/Scanner/Verilog
+
+		    Mpp/Signature Mpp/Signature/c_compilation_md5 Mpp/Signature/md5
+		    Mpp/Signature/shared_object Mpp/Signature/verilog_simulation_md5
+		    Mpp/Signature/verilog_synthesis_md5)) {
   copy("$module.pm", "$datadir/$module.pm");
   chmod 0644, "$datadir/$module.pm";
 }
